@@ -1,31 +1,46 @@
-# Importing the necessary libraries
 import pandas as pd
 import numpy as np
-from statsmodels.tsa.arima.model import ARIMA
-from sklearn.metrics import mean_squared_error
 import matplotlib.pyplot as plt
+import statsmodels.api as sm
 
-# Loading the data into a Pandas DataFrame
-df = pd.read_csv('stock_data')
+# Load the data from CSV file
+data = pd.read_csv('stock_data.csv')
 
-# Preparing the data for training and testing
-train = df[:252] #stock working day
-test = df[252:]
+# Convert the 'Date' column to a datetime format
+data['Date'] = pd.to_datetime(data['Date'])
 
-# Fitting an ARMA model on the training dataset
-model = ARIMA(train['Close'], order=(1, 1, 1))
-model_fit = model.fit()
+# Set the 'Date' column as the index of the DataFrame
+data.set_index('Date', inplace=True)
 
-# Making predictions on the testing dataset
-predictions = model_fit.forecast(steps=len(test))[0]
+# Extract the 'Close' column as a numpy array
+close_prices = data['Close'].to_numpy()
 
-# Calculating the accuracy of the predictions
-rmse = np.sqrt(mean_squared_error(test['Close'], predictions))
-print('RMSE:', rmse)
+# Split the data into training and testing sets
+train_data = close_prices[:-90]
+test_data = close_prices[-90:]
 
-# Calculating the profit/loss based on the ARMA predictions
-test['Predictions'] = predictions
-test['Signal'] = np.where(test['Predictions'] > test['Close'], 1, -1)
-test['PL'] = test['Signal'] * (test['Open'] - test['Close'])
-profit_loss = test['PL'].sum()
-print('Profit/Loss:', profit_loss)
+# Fit an ARMA model to the training data
+model = sm.tsa.ARIMA(train_data, order=(1, 0, 1))
+result = model.fit()
+
+# Make predictions on the testing data using the fitted model
+predictions = result.predict(start=len(train_data), end=len(close_prices)-1)
+
+# Calculate the mean absolute error (MAE) of the predictions
+mae = np.mean(np.abs(predictions - test_data))
+
+# Plot the actual and predicted values
+plt.plot(close_prices[-90:], label='Actual')
+plt.plot(predictions, label='Predicted')
+plt.legend()
+plt.show()
+
+# Calculate the profit/loss based on the ARMA predictions
+buy_price = close_prices[-91]  # The price at the start of the test period
+sell_price = close_prices[-1]  # The price at the end of the test period
+predicted_prices = np.concatenate(([buy_price], predictions))
+returns = np.diff(predicted_prices) / predicted_prices[:-1]
+profit_loss = np.sum(returns) * buy_price
+
+print(f"ARMA model MAE: {mae}")
+print(f"ARMA model profit/loss: {profit_loss}")
